@@ -260,11 +260,85 @@ var f = [...];  // base match lengths
 | Description | Column (0-based) | Code |
 |-------------|-----------------|------|
 | `J()` with base64 string (main decompression) | 91665 | `J("UEsCAFc...")` |
+| `z.push([bytecodes, flags, bool, quads])` | 92077 | `z.push([f,i,u,s])` |
 | `X()` function start (VM entry) | 131082 | `function X(t,r,e,n){...}` |
 | VM dispatch loop | 131642 | `for(;;){var t=o[a++];if(t<38)` |
 | `D()` function wrapper creator | 130951 | `function D(t,r){var e=z[t];...}` |
 | `window.bdms = n` (end of init) | 147480 | `window.bdms=n}` |
 | `k()` LZ77 decompressor | 89768 | `k=function(r,e,n,o){var c=r.length` |
+
+## Captured VM Functions
+
+**Date**: May 14, 2026
+**Method**: Playwright `addInitScript` hooking `Array.prototype.push`
+
+Detection criteria for `z.push([f, i, u, s])`:
+```javascript
+a.length === 1 && Array.isArray(a[0]) && a[0].length === 4
+&& Array.isArray(a[0][0]) && a[0][0].length > 5
+```
+
+**Results**: 1103 VM functions captured with bytecodes.
+
+### Capture Procedure
+
+For a FULL capture including string table, use Python with Playwright:
+
+```python
+from playwright.sync_api import sync_playwright
+
+with sync_playwright() as pw:
+    b = pw.chromium.launch(headless=True)
+    ctx = b.new_context()          # ← MUST use new_context(), not existing pages
+    page = ctx.new_page()
+    
+    # Hook 1: Capture z.push bytecode configs (store references, NOT copies)
+    page.add_init_script("""
+    window.__z_refs = [];
+    window.__Z_strs = [];
+    const _push = Array.prototype.push;
+    Array.prototype.push = function(...a) {
+        const isZ = a.length === 1 && Array.isArray(a[0]) && a[0].length === 4
+                    && Array.isArray(a[0][0]) && a[0][0].length > 5;
+        const isStr = a.length === 1 && typeof a[0] === 'string' && a[0].length > 3;
+        if (isZ) {
+            window.__z_refs.push(a[0]);  // STORE REFERENCE, do NOT copy
+        } else if (isStr && window.__Z_strs.length < 10000) {
+            window.__Z_strs.push(a[0]);
+        }
+        return _push.apply(this, a);
+    };
+    """)
+    
+    page.goto('https://www.douyin.com/jingxuan', ...)
+    page.wait_for_timeout(15000)
+    
+    # Serialize references to plain data in a separate evaluate call
+    result = page.evaluate("""() => {
+        return {
+            z_count: window.__z_refs.length,
+            Z_count: window.__Z_strs.length,
+            Z_sample: window.__Z_strs.slice(0, 30),
+            z_preview: window.__z_refs.slice(0, 10).map(item => ({
+                bytecodes: Array.from(item[0]),  // ← COPY here, NOT in hook
+                flags: item[1],
+                u_type: typeof item[2],
+                quads_len: Array.isArray(item[3]) ? item[3].length : 0
+            }))
+        };
+    }""")
+    
+    # To save ALL bytecodes, batch the serialization:
+    for batch_start in range(0, z_count, 50):
+        batch = page.evaluate(f"""() => {{
+            const refs = window.__z_refs;
+            return refs.slice({batch_start}, {batch_start + 50}).map(item => ({{
+                bc: Array.from(item[0]),
+                fl: item[1]
+            }}));
+        }}""")
+        # save batch to file
+```
 
 ## Timing Issue
 
