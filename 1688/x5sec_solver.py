@@ -38,7 +38,7 @@ def solve(api="mtop.1688.laputa.miniod", ver="1.0", data=None):
     cookie_jar = {}
 
     with sync_playwright() as pw:
-        b = pw.chromium.launch(headless=True)
+        b = pw.chromium.launch(headless=False)
         ctx = b.new_context(viewport={"width": 500, "height": 700})
         page = ctx.new_page()
 
@@ -62,6 +62,9 @@ def solve(api="mtop.1688.laputa.miniod", ver="1.0", data=None):
         else:
             raise RuntimeError("Captcha not ready")
 
+        print("Browser opened. Captcha loaded. Drag will start in 5 seconds...")
+        time.sleep(5)
+
         print("Dragging slider...")
         page.evaluate("""async () => {
             const btn = document.getElementById('scratch-captcha-btn');
@@ -74,27 +77,26 @@ def solve(api="mtop.1688.laputa.miniod", ver="1.0", data=None):
             btn.dispatchEvent(new PointerEvent('pointerdown', {
                 bubbles: true, clientX: sx, clientY: sy
             }));
-            await new Promise(r => setTimeout(r, 200 + Math.random()*200));
+            await new Promise(r => setTimeout(r, 300 + Math.random()*200));
 
-            const steps = 20 + Math.floor(Math.random() * 10);
+            const steps = 15 + Math.floor(Math.random() * 8);
             for (let i = 1; i <= steps; i++) {
                 const t = i / steps;
-                const ease = t < 0.3 ? 1.8*t*t
-                    : t < 0.7 ? 0.5*t + 0.2
-                    : 0.7 + 0.3*Math.sin(t * Math.PI/2);
-                const x = sx + (ex - sx) * Math.min(ease, 1.0);
-                const y = sy + (Math.random()-0.5) * 3;
+                const x = sx + (ex - sx) * t;
+                const y = sy + (Math.random()-0.5) * 4;
                 document.dispatchEvent(new PointerEvent('pointermove', {
                     bubbles: true, clientX: x, clientY: y
                 }));
-                await new Promise(r => setTimeout(r, 50 + Math.random()*60));
+                await new Promise(r => setTimeout(r, 100 + Math.random()*80));
             }
-            await new Promise(r => setTimeout(r, 100));
+            await new Promise(r => setTimeout(r, 200));
             document.dispatchEvent(new PointerEvent('pointerup', {
                 bubbles: true, clientX: ex, clientY: ey
             }));
-            await new Promise(r => setTimeout(r, 3000));
         }""")
+
+        print("Waiting for captcha response...")
+        time.sleep(5)
 
         for c in ctx.cookies():
             cookie_jar[c["name"]] = c["value"]
