@@ -11,7 +11,13 @@ build/
 venv/
 .venv*/
 .python-version
-*.pyc
+spiderdemo/
+camoufox-reverse-mcp/
+*.jpg
+*.png
+*.webp
+*.txt
+CONVERSATION_*
 package-lock.json
 node_modules
 .playwright-mcp
