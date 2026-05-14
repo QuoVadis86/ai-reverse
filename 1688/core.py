@@ -102,49 +102,58 @@ class MTOPSession:
         raw = m.group(1)
         return raw.split("_")[0]
 
-    def _token_from_session(self) -> Optional[str]:
+    def _update_token(self) -> Optional[str]:
+        """从当前 session cookie 中提取 _m_h5_tk token"""
         for cookie in self.http.cookies:
             if cookie.name == "_m_h5_tk":
-                return cookie.value.split("_")[0]
+                t = cookie.value.split("_")[0]
+                self._token = t
+                return t
         return None
 
     def login(self) -> bool:
-        """访问 1688.com 首页获取 _m_h5_tk cookie (服务端 Set-Cookie)"""
-        logger.info("正在访问 1688.com 获取 token ...")
-        resp = self.http.get(
-            "https://www.1688.com/",
-            headers={
-                "User-Agent": self.DEFAULT_HEADERS["User-Agent"],
-                "Accept": "text/html,application/xhtml+xml",
-            },
-            timeout=15,
-        )
-        token = self._token_from_session()
-        if token:
-            self._token = token
-            logger.info("token 获取成功")
-            return True
+        """访问 1688.com 获取 _m_h5_tk cookie (服务端 Set-Cookie)
 
-        # 部分场景下 Set-Cookie 在 302 跳转中，再试一次
-        for resp in resp.history:
-            set_cookie = resp.headers.get("Set-Cookie", "")
-            t = self._extract_token(set_cookie)
-            if t:
-                self._token = t
-                # 同步到 session
-                self.http.cookies.set("_m_h5_tk", set_cookie.split(";")[0].split("=", 1)[1])
-                logger.info("token 获取成功 (from redirect)")
-                return True
+        1688 的 token 由服务端通过 Set-Cookie 下发，
+        客户端无法自行生成。此方法模拟首次访问首页来获取。
+        """
+        logger.info("正在获取 token ...")
+        urls = [
+            "https://www.1688.com/",
+            "https://detail.1688.com/",
+        ]
+        for url in urls:
+            resp = self.http.get(
+                url,
+                headers={
+                    "User-Agent": self.DEFAULT_HEADERS["User-Agent"],
+                    "Accept": "text/html,application/xhtml+xml",
+                },
+                timeout=15,
+            )
+            # 检查最终响应和所有重定向的 Set-Cookie
+            for r in [resp] + list(resp.history):
+                for c in r.cookies:
+                    if c.name == "_m_h5_tk":
+                        t = c.value.split("_")[0]
+                        self._token = t
+                        logger.info("token 获取成功: %s...", t[:12])
+                        return True
+                set_cookie = r.headers.get("Set-Cookie", "")
+                if "_m_h5_tk" in set_cookie:
+                    t = self._extract_token(set_cookie)
+                    if t:
+                        self._token = t
+                        logger.info("token 获取成功: %s...", t[:12])
+                        return True
 
         logger.warning("token 获取失败，需手动提供 cookie")
         return False
 
     def set_cookie(self, cookie_str: str):
         """手动设置 cookie (从浏览器复制)"""
-        self._cookie_str = cookie_str
         self._token = self._extract_token(cookie_str)
         if self._token:
-            # 解析并设置所有 cookie
             for part in cookie_str.split(";"):
                 part = part.strip()
                 if "=" in part:
@@ -170,15 +179,17 @@ class MTOPSession:
         data: Optional[dict] = None,
         method: str = "POST",
         extra_params: Optional[dict] = None,
+        max_retries: int = 3,
     ) -> MTOPResponse:
         """发送 MTOP API 请求
 
         Args:
-            api: MTOP API 名称, 如 "mtop.1688.mmga.offerdetail.service"
+            api: MTOP API 名称
             version: API 版本号
             data: 请求数据 (dict, 会自动 JSON 序列化)
             method: "POST" 或 "GET"
             extra_params: 额外的 URL query 参数
+            max_retries: token 过期时最大重试次数 (默认 3)
         """
         if not self._token:
             raise MTOPAuthError("缺少 token, 请先调用 login() 或 set_cookie()")
@@ -203,7 +214,6 @@ class MTOPSession:
             params.update(extra_params)
 
         url = f"{self.BASE_URL}/{api.lower()}/{version.lower()}/"
-
         logger.debug("请求 %s | data=%s", api, data_str[:200])
 
         if method == "POST":
@@ -213,16 +223,21 @@ class MTOPSession:
             params["data"] = data_str
             resp = self.http.get(url, params=params, timeout=30)
 
+        # 检查响应中是否更新了 token
+        self._update_token()
+
         result = resp.json()
         mtop_resp = MTOPResponse.from_json(result)
 
-        # 检查 token 错误 → 自动重试一次
         if not mtop_resp.success:
             ret_text = " ".join(mtop_resp.ret)
             if any(kw in ret_text for kw in ("TOKEN_EMPTY", "TOKEN_EXOIRED", "ILLEGAL_ACCESS")):
-                logger.warning("token 过期, 尝试刷新 ...")
-                if self.login():
-                    return self.request(api, version, data, method, extra_params)
-                raise MTOPAuthError(f"token 刷新失败: {ret_text}")
+                if max_retries > 0:
+                    logger.warning("token 过期 (%s), 刷新后重试 (%s 次剩余)",
+                                   ret_text[:50], max_retries)
+                    if self.login():
+                        return self.request(api, version, data, method,
+                                            extra_params, max_retries - 1)
+                raise MTOPAuthError(f"token 刷新失败 (已重试): {ret_text}")
 
         return mtop_resp

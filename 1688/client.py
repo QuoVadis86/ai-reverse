@@ -78,9 +78,8 @@ class Alibaba1688Client:
         }
 
     def get_offer_detail_from_html(self, offer_id: int) -> dict:
-        """【备用】从 HTML 解析商品详情 (SSR window.context)
-
-        当 miniod API 不可用时回退到 HTML 解析。
+        """从 HTML 解析商品详情 (SSR window.context)
+        SSR 数据可能为空时自动回退到 miniod API。
         """
         import re
 
@@ -91,14 +90,17 @@ class Alibaba1688Client:
         }
         resp = self.session.http.get(url, headers=headers, timeout=15)
         m = re.search(
-            r"window\.context\s*=\s*(\{.+?\});\s*</script>",
+            r"window\.context\s*=\s*(\{.+?\});",
             resp.text,
             re.DOTALL,
         )
-        if not m:
-            raise ValueError("无法从 HTML 提取 context 数据")
-        context = json.loads(m.group(1))
-        return context["result"]["data"]
+        if m:
+            context = json.loads(m.group(1))
+            data = context.get("result", {}).get("data")
+            if data:
+                return data
+
+        return self.get_offer_detail(offer_id)
 
     # ==============================================================
     # 商品物流/配送信息
@@ -183,6 +185,7 @@ class Alibaba1688Client:
 
         API: mtop.1688.moga.pc.shopcard
         """
+        base_url = winport_url or f"https://shop{seller_user_id}.1688.com"
         data = {
             "offerId": offer_id,
             "userId": 0,
@@ -190,7 +193,16 @@ class Alibaba1688Client:
             "sellerUserId": seller_user_id,
             "sellerMemberId": seller_member_id,
             "topCategoryId": top_category_id,
-            "winportUrl": winport_url or f"https://shop{seller_user_id}.1688.com",
+            "winportUrl": base_url,
+            "sellerWinportUrlMap": {
+                "indexUrl": f"{base_url}/page/index.html",
+                "contactinfoUrl": f"{base_url}/page/contactinfo.html",
+                "creditdetailUrl": f"{base_url}/page/creditdetail.html",
+                "offerlistUrl": f"{base_url}/page/index.html",
+                "shopdynamicUrl": f"{base_url}/page/shopdynamic.html",
+                "defaultUrl": base_url,
+            },
+            "sellerIdentity": "cht",
         }
         return self.session.request("mtop.1688.moga.pc.shopcard", data=data)
 
@@ -408,22 +420,21 @@ class Alibaba1688Client:
     # 以图搜图
     # ==============================================================
 
-    def upload_image(self, image_path: str) -> str:
+    def upload_image(self, image_source: str) -> str:
         """上传图片到以图搜图引擎，返回 imageId
 
-        API: mtop.relationrecommend.WirelessRecommend.recommend (v2.0)
-        Method: uploadBase64WithRequest / Scene: pcImageSearch
+        支持本地文件路径和远程 URL。
 
         Args:
-            image_path: 图片文件路径 (支持 jpg/png)
+            image_source: 图片路径 (本地文件) 或 URL (http/https)
 
         Returns:
             imageId: 图片ID，用于后续搜索
         """
         import base64
 
-        with open(image_path, "rb") as f:
-            b64_str = base64.b64encode(f.read()).decode()
+        raw = self._read_image(image_source)
+        b64_str = base64.b64encode(raw).decode()
 
         params = {
             "method": "uploadBase64WithRequest",
@@ -442,25 +453,63 @@ class Alibaba1688Client:
         )
         return resp.data["data"]["imageId"]
 
+    def _read_image(self, source: str) -> bytes:
+        """从本地路径或 URL 读取图片数据"""
+        import requests as req_lib
+
+        if source.startswith(("http://", "https://")):
+            r = req_lib.get(source, timeout=30)
+            r.raise_for_status()
+            return r.content
+        with open(source, "rb") as f:
+            return f.read()
+
     def search_by_image_id(
         self,
         image_id: str,
         page: int = 1,
         page_size: int = 60,
-        sort_type: str = "normal",
     ) -> MTOPResponse:
         """用已上传的 imageId 搜索以图搜图结果
-
-        API: mtop.relationrecommend.WirelessRecommend.recommend (v2.0)
-        Method: getOfferList / Scene: pcImageSearch
         """
         params = {
-            "method": "getOfferList",
+            "method": "imageOfferSearchService",
             "beginPage": page,
             "pageSize": page_size,
-            "searchScene": "pcImageSearch",
             "imageId": image_id,
-            "sortType": sort_type,
+            "searchScene": "pcImageSearch",
+            "appName": "pctusou",
+        }
+        data = {"appId": 32517, "params": json.dumps(params, separators=(",", ":"))}
+        return self.session.request(
+            "mtop.relationrecommend.WirelessRecommend.recommend",
+            version="2.0",
+            data=data,
+        )
+
+    def search_similar_by_image(
+        self,
+        image_address: str,
+        page: int = 1,
+        page_size: int = 60,
+    ) -> MTOPResponse:
+        """以图搜图 (按图片URL直接搜索相似款, 无需先上传)
+
+        返回 data.data.OFFER:
+          - found: 总结果数
+          - items: 商品列表 (offerId/price/图片信息在 trackInfo.expoData 中)
+          - imageAddress / imageRecognition: 识别信息
+
+        Args:
+            image_address: 图片的完整 URL
+        """
+        params = {
+            "method": "imageSimilarSearchV2",
+            "beginPage": page,
+            "pageSize": page_size,
+            "imageAddress": image_address,
+            "searchScene": "pcImageSearch",
+            "appName": "pctusou",
         }
         data = {"appId": 32517, "params": json.dumps(params, separators=(",", ":"))}
         return self.session.request(
@@ -471,16 +520,16 @@ class Alibaba1688Client:
 
     def search_by_image(
         self,
-        image_path: str,
+        image_source: str,
         page: int = 1,
         page_size: int = 60,
     ) -> MTOPResponse:
-        """以图搜图：上传图片 → 自动用返回的 imageId 搜索
+        """以图搜图：自动选择最佳方式
 
-        Args:
-            image_path: 图片文件路径
-            page: 页码
-            page_size: 每页数量
+        远程 URL → imageSimilarSearchV2 (无需上传)
+        本地文件 → 先 uploadBase64WithRequest → imageId → imageOfferSearchService
         """
-        image_id = self.upload_image(image_path)
+        if image_source.startswith(("http://", "https://")):
+            return self.search_similar_by_image(image_source, page, page_size)
+        image_id = self.upload_image(image_source)
         return self.search_by_image_id(image_id, page=page, page_size=page_size)
