@@ -85,7 +85,7 @@ class Alibaba1688Client:
 
         url = f"https://detail.1688.com/offer/{offer_id}.html"
         headers = {
-            "User-Agent": self.session.DEFAULT_HEADERS["User-Agent"],
+            "User-Agent": self.session.UA,
             "Accept": "text/html,application/xhtml+xml",
         }
         resp = self.session.http.get(url, headers=headers, timeout=15)
