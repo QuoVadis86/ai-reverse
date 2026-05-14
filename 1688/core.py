@@ -128,7 +128,6 @@ class MTOPSession:
             url = f"{self.BASE_URL}/mtop.1688.moga.pc.shopcard/1.0/"
             params = {
                 "jsv": "2.7.4", "appKey": self.APP_KEY, "t": ts, "sign": sign,
-                "enctk": "undefined",
                 "api": "mtop.1688.moga.pc.shopcard", "v": "1.0",
                 "type": "originaljson", "dataType": "jsonp", "timeout": "20000",
             }
