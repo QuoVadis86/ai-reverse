@@ -345,3 +345,146 @@ class Alibaba1688Client:
             data={},
             method="GET",
         )
+
+    # ==============================================================
+    # 搜索
+    # ==============================================================
+
+    def search_by_text(
+        self,
+        keywords: str,
+        page: int = 1,
+        page_size: int = 60,
+        sort_type: str = "normal",
+    ) -> MTOPResponse:
+        """关键词搜索商品
+
+        API: mtop.relationrecommend.WirelessRecommend.recommend (v2.0)
+        Method: getOfferList / Scene: pcOfferSearch
+        """
+        params = {
+            "method": "getOfferList",
+            "beginPage": page,
+            "pageSize": page_size,
+            "keywords": keywords,
+            "searchScene": "pcOfferSearch",
+            "verticalProductFlag": "pcmarket",
+            "charset": "GBK",
+            "sortType": sort_type,
+        }
+        data = {"appId": 32517, "params": json.dumps(params, separators=(",", ":"))}
+        return self.session.request(
+            "mtop.relationrecommend.WirelessRecommend.recommend",
+            version="2.0",
+            data=data,
+        )
+
+    # ==============================================================
+    # 搜索配置 / 筛选项
+    # ==============================================================
+
+    def get_search_config(self, keywords: str) -> MTOPResponse:
+        """获取搜索配置和筛选项
+
+        API: mtop.relationrecommend.WirelessRecommend.recommend (v2.0)
+        Method: batchGetNavigationAndConfigData
+
+        返回包含:
+          - filterData: 筛选 (包邮/一件代发/新品等)
+          - navigationData: 类目导航
+          - pageConfigData: 页面配置
+        """
+        params = {
+            "method": "batchGetNavigationAndConfigData",
+            "keywords": keywords,
+            "searchScene": "pcOfferSearch",
+            "verticalProductFlag": "pcmarket",
+            "charset": "GBK",
+        }
+        data = {"appId": 32517, "params": json.dumps(params, separators=(",", ":"))}
+        return self.session.request(
+            "mtop.relationrecommend.WirelessRecommend.recommend",
+            version="2.0",
+            data=data,
+        )
+
+    # ==============================================================
+    # 以图搜图
+    # ==============================================================
+
+    def upload_image(self, image_path: str) -> str:
+        """上传图片到以图搜图引擎，返回 imageId
+
+        API: mtop.relationrecommend.WirelessRecommend.recommend (v2.0)
+        Method: uploadBase64WithRequest / Scene: pcImageSearch
+
+        Args:
+            image_path: 图片文件路径 (支持 jpg/png)
+
+        Returns:
+            imageId: 图片ID，用于后续搜索
+        """
+        import base64
+
+        with open(image_path, "rb") as f:
+            b64_str = base64.b64encode(f.read()).decode()
+
+        params = {
+            "method": "uploadBase64WithRequest",
+            "beginPage": 1,
+            "pageSize": 60,
+            "searchScene": "pcImageSearch",
+            "appName": "pctusou",
+            "imageBase64": b64_str,
+            "sortType": "normal",
+        }
+        data = {"appId": 32517, "params": json.dumps(params, separators=(",", ":"))}
+        resp = self.session.request(
+            "mtop.relationrecommend.WirelessRecommend.recommend",
+            version="2.0",
+            data=data,
+        )
+        return resp.data["data"]["imageId"]
+
+    def search_by_image_id(
+        self,
+        image_id: str,
+        page: int = 1,
+        page_size: int = 60,
+        sort_type: str = "normal",
+    ) -> MTOPResponse:
+        """用已上传的 imageId 搜索以图搜图结果
+
+        API: mtop.relationrecommend.WirelessRecommend.recommend (v2.0)
+        Method: getOfferList / Scene: pcImageSearch
+        """
+        params = {
+            "method": "getOfferList",
+            "beginPage": page,
+            "pageSize": page_size,
+            "searchScene": "pcImageSearch",
+            "imageId": image_id,
+            "sortType": sort_type,
+        }
+        data = {"appId": 32517, "params": json.dumps(params, separators=(",", ":"))}
+        return self.session.request(
+            "mtop.relationrecommend.WirelessRecommend.recommend",
+            version="2.0",
+            data=data,
+        )
+
+    def search_by_image(
+        self,
+        image_path: str,
+        page: int = 1,
+        page_size: int = 60,
+    ) -> MTOPResponse:
+        """以图搜图：上传图片 → 自动用返回的 imageId 搜索
+
+        Args:
+            image_path: 图片文件路径
+            page: 页码
+            page_size: 每页数量
+        """
+        image_id = self.upload_image(image_path)
+        return self.search_by_image_id(image_id, page=page, page_size=page_size)

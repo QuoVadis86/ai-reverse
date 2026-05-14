@@ -7,17 +7,24 @@
   - MTOP 签名算法 (MD5)
   - Session/Cookie 管理
   - Token 自动获取与刷新
-  - 1688 业务 API 封装
+  - 1688 业务 API (18个方法)
 
 使用方式：
-  from h5api_sdk import Alibaba1688Client
+  from sdk import Alibaba1688Client
 
   client = Alibaba1688Client()
-  client.login()  # 首次需获取 token
+  client.session.login()
 
-  # 获取商品详情
+  # 商品详情
   detail = client.get_offer_detail(849246166605)
-  print(detail["productTitle"]["fields"]["title"])
+  print(detail["offerDetail"]["subject"])
+
+  # 以图搜图
+  r = client.search_by_image("path/to/image.jpg")
+  print(r.data)
+
+  # 关键词搜索
+  r = client.search_by_text("手机壳", page=1)
 """
 
 from .core import MTOPSession, MTOPAuthError, MTOPError
