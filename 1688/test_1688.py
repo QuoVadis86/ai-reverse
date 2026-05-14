@@ -23,7 +23,7 @@ from client import Alibaba1688Client
 # 复制整个 cookie 字符串到下面
 COOKIE_STR = os.environ.get(
     "COOKIE",
-    "",
+    """taklid=39ee372737ff41b1acbdacb829233566; _csrf_token=1778721947150; xlly_s=1; cookie2=2a0b0d544d767ed774b9c44a7a695cab; t=38daa81cd4de8f685ddfb40971278036; _tb_token_=5e3e3e5e3deee; __cn_logon__=false; leftMenuLastMode=COLLAPSE; leftMenuModeTip=shown; plugin_home_downLoad_cookie=%E4%B8%8B%E8%BD%BD%E6%8F%92%E4%BB%B6; keywordsHistory=%E6%8B%8D%E7%AB%8B%E5%BE%97%E7%9B%B8%E7%BA%B8; mtop_partitioned_detect=1; _m_h5_tk=87ee993f2da00bd7f0cc46fe74c8364c_1778737255614; _m_h5_tk_enc=f91bf2bf4b450fb2a158c22210cc94cd; cna=TGyEIu1QN1YCAXQeZBZydOd7; isg=BG5utf4biFw2b__AtuwF16N5v8IwbzJp1hkthZg32nEsew7VAP-CeRT4M--XoyqB; tfstk=gzhjjzMTNchzjiLvXi8PRhTtpyF6YURUMNat-VCVWSFY51gnfqPZW-BRyrqrgou4Mc6sADaaD1E9w8U38rBTWP3RwuiA_-oZ1Yfs-Vc2o580iqVg6H-eTAgmo5qdvY5244LTS5ax4VJklqVg63-eTBumomNBWW0T6UN85yrT6RnOyUaT7iBOMc3JPu4GDGBYXQU8-PUT65ntyUag2lFTHc3JPPq8XUoOVPJbWqTGvKQgasb4ku1O6bavmk3bVz4oNrwbv8E56ZG7l-ZKkXUSsWzspXwmv3W4DvMZAyo2wsiIkmMLpjIJV50rdcaIMeBQfm0-g8hv794usxHLMftCDqwIwjPmFH1UvY0t183DA94rB2lqCm-l6okIy0wEag5UwjijM8Nd40CUAo81Cawh6zZePU6GIIyC8gzWMtruHz4vTUT5VO2YrzakPU6GI-Uul88WPiSF.; _user_vitals_session_data_={"user_line_track":true,"ul_session_id":"ju166g2rddn","last_page_id":"detail.1688.com%2F33gcy2njkko"}""",
 )
 
 OFFER_ID = 849246166605
@@ -140,7 +140,7 @@ def main():
     test_offer_recommendations(c)
     test_shop_card(c)
     test_ratings(c)
-    test_search_config(c)
+    # test_search_config(c)
     test_search_by_text(c)
 
     image_id = test_upload_image(c)

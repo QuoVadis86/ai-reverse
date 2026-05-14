@@ -12,3 +12,6 @@ venv/
 .venv*/
 .python-version
 *.pyc
+package-lock.json
+node_modules
+.playwright-mcp

@@ -112,42 +112,66 @@ class MTOPSession:
         return None
 
     def login(self) -> bool:
-        """访问 1688.com 获取 _m_h5_tk cookie (服务端 Set-Cookie)
+        """获取 _m_h5_tk token (无需 cookie)
 
-        1688 的 token 由服务端通过 Set-Cookie 下发，
-        客户端无法自行生成。此方法模拟首次访问首页来获取。
+        方式1: 用 enctk=undefined 触发 MTOP 服务端下发 Set-Cookie
+        方式2: 访问 1688.com 首页 (回退方案)
         """
         logger.info("正在获取 token ...")
-        urls = [
-            "https://www.1688.com/",
-            "https://detail.1688.com/",
-        ]
-        for url in urls:
-            resp = self.http.get(
-                url,
-                headers={
+
+        # 方式1: 调任意 MTOP API，传 enctk=undefined + token="undefined"
+        try:
+            ts = str(int(time.time() * 1000))
+            data_str = "{}"
+            raw = f"undefined&{ts}&{self.APP_KEY}&{data_str}"
+            sign = hashlib.md5(raw.encode("utf-8")).hexdigest()
+            url = f"{self.BASE_URL}/mtop.1688.moga.pc.shopcard/1.0/"
+            params = {
+                "jsv": "2.7.4", "appKey": self.APP_KEY, "t": ts, "sign": sign,
+                "enctk": "undefined",
+                "api": "mtop.1688.moga.pc.shopcard", "v": "1.0",
+                "type": "originaljson", "dataType": "jsonp", "timeout": "20000",
+            }
+            resp = self.http.post(url, params=params, data={"data": data_str}, timeout=15)
+            for c in resp.cookies:
+                if c.name == "_m_h5_tk":
+                    self._token = c.value.split("_")[0]
+                    logger.info("token 获取成功 (enctk): %s...", self._token[:12])
+                    return True
+            set_cookie = resp.headers.get("Set-Cookie", "")
+            if "_m_h5_tk" in set_cookie:
+                t = self._extract_token(set_cookie)
+                if t:
+                    self._token = t
+                    logger.info("token 获取成功 (enctk): %s...", t[:12])
+                    return True
+        except Exception as e:
+            logger.debug("enctk 方式失败: %s", e)
+
+        # 方式2: 访问首页 (回退)
+        for url in ["https://www.1688.com/", "https://detail.1688.com/"]:
+            try:
+                resp = self.http.get(url, headers={
                     "User-Agent": self.DEFAULT_HEADERS["User-Agent"],
                     "Accept": "text/html,application/xhtml+xml",
-                },
-                timeout=15,
-            )
-            # 检查最终响应和所有重定向的 Set-Cookie
-            for r in [resp] + list(resp.history):
-                for c in r.cookies:
-                    if c.name == "_m_h5_tk":
-                        t = c.value.split("_")[0]
-                        self._token = t
-                        logger.info("token 获取成功: %s...", t[:12])
-                        return True
-                set_cookie = r.headers.get("Set-Cookie", "")
-                if "_m_h5_tk" in set_cookie:
-                    t = self._extract_token(set_cookie)
-                    if t:
-                        self._token = t
-                        logger.info("token 获取成功: %s...", t[:12])
-                        return True
+                }, timeout=15)
+                for r in [resp] + list(resp.history):
+                    for c in r.cookies:
+                        if c.name == "_m_h5_tk":
+                            self._token = c.value.split("_")[0]
+                            logger.info("token 获取成功: %s...", self._token[:12])
+                            return True
+                    set_cookie = r.headers.get("Set-Cookie", "")
+                    if "_m_h5_tk" in set_cookie:
+                        t = self._extract_token(set_cookie)
+                        if t:
+                            self._token = t
+                            logger.info("token 获取成功: %s...", t[:12])
+                            return True
+            except Exception:
+                continue
 
-        logger.warning("token 获取失败，需手动提供 cookie")
+        logger.warning("token 获取失败")
         return False
 
     def set_cookie(self, cookie_str: str):
