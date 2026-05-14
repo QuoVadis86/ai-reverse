@@ -315,6 +315,45 @@ Uint8Array.from = function(source, mapFn, thisArg) {
 };
 ```
 
+## Breakthrough: Bytecode Capture via Array.push Hook
+
+**Date**: May 14, 2026
+**Method**: Playwright `addInitScript` hooking `Array.prototype.push`
+
+Using the following detection pattern in `addInitScript()`:
+
+```javascript
+// Runs before any page script
+Array.prototype.push = function(...args) {
+    // Detect z.push([bytecodes, flags, bool, quads])
+    if (args.length === 1 && Array.isArray(args[0]) && args[0].length === 4
+        && Array.isArray(args[0][0]) && typeof args[0][0][0] === 'number'
+        && args[0][0].length > 10) {
+        // This is z.push([f, i, u, s])
+        save(args[0][0]);  // bytecodes array
+        save(args[0][1]);  // flags (number)
+    }
+};
+```
+
+**Results**: 1001 VM functions captured with full bytecodes.
+
+### VM Function Distribution
+
+- Functions with `is_ctor = 0`: ~50 (top-level wrappers)
+- Functions with `is_ctor = 1`: ~600 (regular methods)
+- Functions with `is_ctor = 2`: ~200 (internal helpers)
+- Functions with `is_ctor = 3+`: ~150 (complex handlers)
+
+Bytecode sizes range from 11 to 639 instructions.
+
+### Still Needed
+
+- [ ] String table `Z[]` capture (currently missed by the hook)
+- [ ] Convert captured bytecodes to vmasm format
+- [ ] Load vmasm into rc-devtools for tracing
+- [ ] Find a_bogus generation function(s) in the 1001 VM functions
+
 ## Current Status (May 2026)
 
 - [x] Architecture mapped (bdms → JSVMP → a_bogus)
@@ -322,9 +361,10 @@ Uint8Array.from = function(source, mapFn, thisArg) {
 - [x] 38 VM opcodes cataloged
 - [x] VM interpreter (`X` function) identified
 - [x] `k` LZ77 decompressor extracted (1561 chars)
-- [ ] XOR + LZ77 decompression pipeline working in Node.js
-- [ ] `z[]` VM function array extracted
+- [x] XOR + LZ77 decompression pipeline working in Node.js
+- [x] `z[]` VM function array extracted (1001 functions via push hook)
 - [ ] vmasm file generated
+- [ ] String table Z[] captured
 - [ ] a_bogus generation algorithm fully traced
 
 ## Helper Scripts
