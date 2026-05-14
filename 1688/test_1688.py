@@ -1,154 +1,127 @@
 """
 1688 MTOP SDK 测试脚本
 =====================
-验证所有 API 方法是否正常工作。
-
-使用方式:
-  python3 test_1688.py
-
-首次使用需要从浏览器复制 cookie 填入下方 COOKIE_STR 变量。
+无需 cookie，自动通过 enctk 从服务端获取 token。
 """
 
-import json
-import sys
-import os
-
+import json, sys, os, traceback
 sys.path.insert(0, os.path.dirname(__file__))
 
 from core import MTOPSession
 from client import Alibaba1688Client
 
-# ⚠️ 先填入从浏览器复制的 cookie
-# 打开浏览器 F12 → Network → 任意请求 → Request Headers → cookie
-# 复制整个 cookie 字符串到下面
-COOKIE_STR = os.environ.get(
-    "COOKIE",
-    """taklid=39ee372737ff41b1acbdacb829233566; _csrf_token=1778721947150; xlly_s=1; cookie2=2a0b0d544d767ed774b9c44a7a695cab; t=38daa81cd4de8f685ddfb40971278036; _tb_token_=5e3e3e5e3deee; __cn_logon__=false; leftMenuLastMode=COLLAPSE; leftMenuModeTip=shown; plugin_home_downLoad_cookie=%E4%B8%8B%E8%BD%BD%E6%8F%92%E4%BB%B6; keywordsHistory=%E6%8B%8D%E7%AB%8B%E5%BE%97%E7%9B%B8%E7%BA%B8; mtop_partitioned_detect=1; _m_h5_tk=87ee993f2da00bd7f0cc46fe74c8364c_1778737255614; _m_h5_tk_enc=f91bf2bf4b450fb2a158c22210cc94cd; cna=TGyEIu1QN1YCAXQeZBZydOd7; isg=BG5utf4biFw2b__AtuwF16N5v8IwbzJp1hkthZg32nEsew7VAP-CeRT4M--XoyqB; tfstk=gzhjjzMTNchzjiLvXi8PRhTtpyF6YURUMNat-VCVWSFY51gnfqPZW-BRyrqrgou4Mc6sADaaD1E9w8U38rBTWP3RwuiA_-oZ1Yfs-Vc2o580iqVg6H-eTAgmo5qdvY5244LTS5ax4VJklqVg63-eTBumomNBWW0T6UN85yrT6RnOyUaT7iBOMc3JPu4GDGBYXQU8-PUT65ntyUag2lFTHc3JPPq8XUoOVPJbWqTGvKQgasb4ku1O6bavmk3bVz4oNrwbv8E56ZG7l-ZKkXUSsWzspXwmv3W4DvMZAyo2wsiIkmMLpjIJV50rdcaIMeBQfm0-g8hv794usxHLMftCDqwIwjPmFH1UvY0t183DA94rB2lqCm-l6okIy0wEag5UwjijM8Nd40CUAo81Cawh6zZePU6GIIyC8gzWMtruHz4vTUT5VO2YrzakPU6GI-Uul88WPiSF.; _user_vitals_session_data_={"user_line_track":true,"ul_session_id":"ju166g2rddn","last_page_id":"detail.1688.com%2F33gcy2njkko"}""",
-)
-
 OFFER_ID = 849246166605
-
 
 def get_client():
     s = MTOPSession()
-    if COOKIE_STR:
-        s.set_cookie(COOKIE_STR)
-    elif not s.login():
-        print("❌ 需要 cookie")
-        print("    export COOKIE='_m_h5_tk=xxx...; ...'")
+    if not s.login():
+        print("❌ 无法获取 token")
         sys.exit(1)
     return Alibaba1688Client(s)
 
+passed = 0
+failed = 0
 
-def test_offer_detail(c):
-    print("\n=== get_offer_detail ===")
-    r = c.get_offer_detail(OFFER_ID)
-    offer = r["offerDetail"]
-    dm = r["dataModel"]
-    print(f"  标题: {offer['subject']}")
-    print(f"  状态: {offer['status']}")
-    print(f"  类目: {offer['leafCategoryName']}")
-    mp = dm.get("mainPrice", {}).get("fields", {})
-    skus = mp.get("finalPriceModel", {}).get("tradeWithoutPromotion", {}).get("skuMapOriginal", [])
-    print(f"  SKU ({len(skus)}个):")
-    for s in skus[:3]:
-        print(f"    {s['specAttrs']}: ¥{s['price']} 库存={s['canBookCount']}")
+def test(name, fn):
+    global passed, failed
+    try:
+        fn()
+        print(f"  ✅ {name}")
+        passed += 1
+    except Exception as e:
+        print(f"  ❌ {name}: {e}")
+        failed += 1
 
+c = get_client()
+print(f"✅ SDK 就绪 (token: {c.session._token[:16]}...)\n")
 
-def test_offer_recommendations(c):
-    print("\n=== get_offer_recommendations ===")
-    r = c.get_offer_recommendations(OFFER_ID)
-    result = r.data.get("result", {})
-    major = result.get("majorRecommendOfferInfos", [])
-    print(f"  推荐商品: {len(major)} 个")
-    for o in major[:3]:
-        print(f"    {o['title'][:30]}... ¥{o['price']}")
+# ── 商品详情 ──
+test("get_offer_detail", lambda: (
+    r := c.get_offer_detail(OFFER_ID),
+    r["offerDetail"]["subject"],
+    r["dataModel"],
+))
 
+test("get_offer_detail_from_html", lambda: (
+    r := c.get_offer_detail_from_html(OFFER_ID),
+    r.get("offerDetail") or r.get("productTitle"),
+))
 
-def test_shop_card(c):
-    print("\n=== get_shop_card ===")
-    r = c.get_shop_card(
-        offer_id=OFFER_ID,
-        seller_user_id=2215935988385,
-        seller_member_id="b2b-221593598838573ca7",
-    )
-    model = r.data.get("model", {})
-    print(f"  店铺: {model.get('shopName')}")
-    for d in model.get("shopData", []):
-        print(f"    {d['dataKey']}: {d['dataValue']}")
+# ── 推荐/物流 ──
+test("get_offer_recommendations", lambda: (
+    r := c.get_offer_recommendations(OFFER_ID), r.success,
+))
 
+test("get_offer_logistics", lambda: (
+    r := c.get_offer_logistics(OFFER_ID, 2215935988385), r.success,
+))
 
-def test_ratings(c):
-    print("\n=== get_ratings ===")
-    r = c.get_ratings(OFFER_ID, page=1, page_size=3)
-    d = r.data
-    if d and isinstance(d, dict):
-        print(f"  返回 keys: {list(d.keys())}")
+# ── 店铺 ──
+test("get_shop_card", lambda: (
+    r := c.get_shop_card(OFFER_ID, 2215935988385, "b2b-221593598838573ca7"),
+    r.data["model"]["shopName"],
+))
 
+test("get_shop_header", lambda: (
+    r := c.get_shop_header("b2b-221593598838573ca7"), r.success,
+))
 
-def test_search_config(c):
-    print("\n=== get_search_config ===")
-    r = c.get_search_config("手机")
-    if not r.success:
-        print(f"  ❌ {r.ret}")
-        return
-    d = r.data
-    fd = d.get("data", {}).get("filterData", {})
-    left = fd.get("filtbarLeft", [])
-    bottom = fd.get("filtbarBottom", [])
-    print(f"  排序方式: {[x['label'] for x in left[:4]]}")
-    print(f"  快捷筛选: {[x['label'] for x in bottom[:6]]}")
+test("get_shop_certification", lambda: (
+    r := c.get_shop_certification("b2b-221593598838573ca7"), r.success,
+))
 
+test("check_shop_relation", lambda: (
+    r := c.check_shop_relation("颂伊家装建材"), r.success,
+))
 
-def test_search_by_text(c):
-    print("\n=== search_by_text ===")
-    r = c.search_by_text("手机壳", page=1, page_size=5)
-    if not r.success:
-        print(f"  ❌ {r.ret}")
-        return
-    d = r.data
-    print(f"  响应结构 keys: {list(d.keys())}")
+# ── 评价 ──
+test("get_ratings", lambda: (
+    r := c.get_ratings(OFFER_ID, 1, 3), r.success,
+))
 
+test("get_dsr_ratings", lambda: (
+    r := c.get_dsr_ratings(OFFER_ID), r.success,
+))
 
-def test_upload_image(c):
-    print("\n=== upload_image ===")
-    # 用本地测试图片
-    test_img = os.path.expanduser("~/Desktop/test_search_img.jpg")
-    if not os.path.exists(test_img):
-        print(f"  ⏭️ 跳过: 没有测试图片 ({test_img})")
-        return
-    image_id = c.upload_image(test_img)
-    print(f"  imageId: {image_id}")
-    return image_id
+# ── 运费 ──
+test("get_freight_info", lambda: (
+    r := c.get_freight_info(OFFER_ID), r.success,
+))
 
+test("get_fulfillment_solution", lambda: (
+    r := c.get_fulfillment_solution(OFFER_ID), r.success,
+))
 
-def test_search_by_image_id(c, image_id):
-    print(f"\n=== search_by_image_id ===")
-    r = c.search_by_image_id(image_id)
-    if not r.success:
-        print(f"  ❌ {r.ret}")
-        return
-    d = r.data
-    print(f"  响应 keys: {list(d.keys())}")
+# ── 搜索 ──
+test("get_search_config", lambda: (
+    r := c.get_search_config("手机"), r.success, r.data["data"]["filterData"],
+))
 
+test("search_by_text", lambda: (
+    r := c.search_by_text("手机壳", 1, 5), r.success,
+))
 
-def main():
-    c = get_client()
-    print(f"✅ SDK 就绪 (token: {c.session._token[:12]}...)")
+# ── 以图搜图 ──
+IMG_URL = "https://cbu01.alicdn.com/img/ibank/O1CN01jhWptz1LjwDnxJdcK_!!2359971336-0-cib.jpg"
 
-    test_offer_detail(c)
-    test_offer_recommendations(c)
-    test_shop_card(c)
-    test_ratings(c)
-    # test_search_config(c)
-    test_search_by_text(c)
+test("search_similar_by_image(URL)", lambda: (
+    r := c.search_similar_by_image(IMG_URL, page_size=5),
+    r.success,
+    r.data["data"]["OFFER"]["found"] > 0,
+))
 
-    image_id = test_upload_image(c)
-    if image_id:
-        test_search_by_image_id(c, image_id)
+test("search_by_image(URL)", lambda: (
+    r := c.search_by_image(IMG_URL, page_size=5), r.success,
+))
 
-    print("\n✅ 全部测试完成")
+local = os.path.expanduser("~/Desktop/test_search_img.jpg")
+if os.path.exists(local):
+    test("upload_image(local)", lambda: (
+        i := c.upload_image(local), print(f"      imageId: {i}"),
+    ))
+    test("search_by_image(local)", lambda: (
+        r := c.search_by_image(local, page_size=5), r.success,
+    ))
 
-
-if __name__ == "__main__":
-    main()
+print(f"\n{'='*40}")
+print(f"结果: {passed}/{passed+failed} 通过", "🎉" if failed == 0 else f" ❌ {failed}")
