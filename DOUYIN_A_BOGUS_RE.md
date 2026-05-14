@@ -255,6 +255,78 @@ var f = [...];  // base match lengths
 3. Train a model to predict a_bogus (or at least validate correctness)
 4. Use this to generate a_bogus for new requests
 
+## Key Breakpoint Locations (bdms.js, line 2)
+
+| Description | Column (0-based) | Code |
+|-------------|-----------------|------|
+| `J()` with base64 string (main decompression) | 91665 | `J("UEsCAFc...")` |
+| `X()` function start (VM entry) | 131082 | `function X(t,r,e,n){...}` |
+| VM dispatch loop | 131642 | `for(;;){var t=o[a++];if(t<38)` |
+| `D()` function wrapper creator | 130951 | `function D(t,r){var e=z[t];...}` |
+| `window.bdms = n` (end of init) | 147480 | `window.bdms=n}` |
+| `k()` LZ77 decompressor | 89768 | `k=function(r,e,n,o){var c=r.length` |
+
+## Timing Issue
+
+The bdms.js script loads and executes synchronously during page load.
+By the time rc-devtools breakpoints are registered, bdms has already
+finished executing. The `z[]` array is populated before any page JS
+runs.
+
+### Solution: Playwright addInitScript
+
+Use Playwright's `addInitScript()` to inject capture code BEFORE any
+scripts run on the page:
+
+```javascript
+// This runs before any page script
+await page.addInitScript(() => {
+    // Hook into webpack module system or the J() function
+    // Example: patch Array.push to capture z[] entries
+    const origPush = Array.prototype.push;
+    Array.prototype.push = function(...args) {
+        // Check if this is the z array being populated
+        // (z starts empty and gets ~43 entries of bytecode configs)
+        if (this.length === 0 && args.length > 0 && Array.isArray(args[0])) {
+            window.__bdms_z = window.__bdms_z || [];
+            window.__bdms_z.push(args[0]);
+        }
+        return origPush.apply(this, args);
+    };
+});
+```
+
+This hooks ALL Array.push calls, so it needs careful filtering.
+
+### Alternative: Hook Uint8Array
+
+The `J()` function creates `Uint8Array` instances during decompression.
+Hook `Uint8Array.from` or `Uint8Array` constructor to save the
+decompressed data:
+
+```javascript
+const origFrom = Uint8Array.from;
+Uint8Array.from = function(source, mapFn, thisArg) {
+    const result = origFrom.call(this, source, mapFn, thisArg);
+    if (source.length > 10000) { // likely the bytecode data
+        window.__bdms_binary = result;
+    }
+    return result;
+};
+```
+
+## Current Status (May 2026)
+
+- [x] Architecture mapped (bdms → JSVMP → a_bogus)
+- [x] Bytecode storage format decoded (base64 → XOR → LZ77)
+- [x] 38 VM opcodes cataloged
+- [x] VM interpreter (`X` function) identified
+- [x] `k` LZ77 decompressor extracted (1561 chars)
+- [ ] XOR + LZ77 decompression pipeline working in Node.js
+- [ ] `z[]` VM function array extracted
+- [ ] vmasm file generated
+- [ ] a_bogus generation algorithm fully traced
+
 ## Helper Scripts
 
 - `/tmp/decode_bdms.js` - Base64 decode + XOR decode (Node.js)
