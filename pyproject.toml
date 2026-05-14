@@ -1,0 +1,22 @@
+[project]
+name = "ali1688-mcp"
+version = "1.0.0"
+description = "1688 选品 MCP 工具 - 搜索/详情/以图搜图/Ozon推荐"
+requires-python = ">=3.9"
+dependencies = [
+    "requests>=2.28.0",
+    "mcp>=1.0.0",
+]
+
+[project.scripts]
+ali1688-mcp = "ali1688_mcp.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["ali1688_mcp*", "1688*"]
+
+[tool.setuptools.package-data]
+"1688" = ["*.py", "SKILL.md"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
