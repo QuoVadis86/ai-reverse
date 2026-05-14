@@ -176,17 +176,12 @@ class Alibaba1688Client:
         offer_id: int,
         seller_user_id: int,
         seller_member_id: str,
+        winport_url: str = "",
         top_category_id: int = 15,
     ) -> MTOPResponse:
         """获取店铺卡片信息 (名称、评分、粉丝数)
 
         API: mtop.1688.moga.pc.shopcard
-
-        Args:
-            offer_id: 商品 ID
-            seller_user_id: 卖家用户 ID
-            seller_member_id: 卖家 memberId
-            top_category_id: 顶级类目 ID
         """
         data = {
             "offerId": offer_id,
@@ -195,6 +190,7 @@ class Alibaba1688Client:
             "sellerUserId": seller_user_id,
             "sellerMemberId": seller_member_id,
             "topCategoryId": top_category_id,
+            "winportUrl": winport_url or f"https://shop{seller_user_id}.1688.com",
         }
         return self.session.request("mtop.1688.moga.pc.shopcard", data=data)
 
@@ -242,10 +238,10 @@ class Alibaba1688Client:
         API: mtop.1688.trade.service.MtopRateService.queryItemRatedListV2
         """
         data = {
-            "offerId": str(offer_id),
+            "offerId": offer_id,
             "beginPage": page,
             "pageSize": page_size,
-            "auctionStarType": "all",
+            "starLevel": "all",
         }
         return self.session.request(
             "mtop.1688.trade.service.MtopRateService.queryItemRatedListV2",
@@ -253,12 +249,12 @@ class Alibaba1688Client:
             data=data,
         )
 
-    def get_dsr_ratings(self, offer_id: int) -> MTOPResponse:
+    def get_dsr_ratings(self, offer_id: int, scene: str = "dsc") -> MTOPResponse:
         """获取商品 DSR 评分数据 (描述、物流、服务)
 
         API: mtop.1688.trade.service.MtopRateService.queryDsrRateDataV2
         """
-        data = {"offerId": str(offer_id)}
+        data = {"offerId": offer_id, "scene": scene}
         return self.session.request(
             "mtop.1688.trade.service.MtopRateService.queryDsrRateDataV2",
             version="1.0",
