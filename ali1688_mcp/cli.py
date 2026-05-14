@@ -23,15 +23,14 @@ logging.basicConfig(level=logging.WARNING, stream=sys.stderr)
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 logger = logging.getLogger("ali1688-mcp")
 
-# ── 路径处理：确保能找到 1688/ SDK ──
+# ── 路径处理：确保能找到 SDK ──
 _HERE = os.path.dirname(os.path.abspath(__file__))
+_SDK = os.path.join(_HERE, "sdk")
 _PROJECT = os.path.dirname(_HERE)
-_SDK = os.path.join(_PROJECT, "1688")
 if os.path.isdir(_SDK):
     sys.path.insert(0, _SDK)
 else:
-    # 已安装为包，从包内找
-    _SDK = os.path.join(os.path.dirname(_PROJECT), "1688")
+    _SDK = os.path.join(_PROJECT, "1688")
     if os.path.isdir(_SDK):
         sys.path.insert(0, _SDK)
 
